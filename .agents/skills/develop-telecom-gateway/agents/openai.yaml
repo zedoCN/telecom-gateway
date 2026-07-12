@@ -1,0 +1,4 @@
+interface:
+  display_name: "Develop Telecom Gateway"
+  short_description: "Develop and validate the ctgw Go repository"
+  default_prompt: "Use $develop-telecom-gateway to implement and validate a change in this repository."

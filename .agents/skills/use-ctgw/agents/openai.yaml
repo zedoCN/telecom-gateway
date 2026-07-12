@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use ctgw"
+  short_description: "Safely inspect and manage telecom gateways"
+  default_prompt: "Use $use-ctgw to inspect or change a supported telecom gateway safely."
