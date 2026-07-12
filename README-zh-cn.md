@@ -6,6 +6,8 @@
 
 目前只针对 **TEWA-1000E**、固件 **Tianyi_V1.0_JS2011** 上实际观测到的 LuCI 风格 CGI 接口开发。其它型号或固件可能具有不同的登录流程、字段和写入行为；新增兼容声明必须同时提供脱敏测试样本和真实硬件验证。
 
+该型号和固件已实际验证：登录、系统凭据库复用、状态查询、默认脱敏的网关信息和端口映射列表。日常验收明确不执行真实写操作。
+
 ## 功能
 
 - 查询网关状态、WAN/LAN 信息、在线设备和端口映射。
@@ -15,7 +17,7 @@
 - `info` 默认隐藏 MAC、序列号、SSID 和宽带账号。
 - 所有修改命令都强制要求 `--yes`。
 - 拒绝同名隐式覆盖，并通过重新读取列表验证端口映射写入结果。
-- 运行时只依赖 Go 标准库。
+- 将验证成功的密码保存到当前操作系统用户的系统凭据库。
 - 内置 Agent 开发说明和可复用的 `ctgw` 操作 Skill。
 
 项目明确不提供 Web UI，也不提供后台 daemon。
@@ -41,11 +43,21 @@ GitHub 仓库和首个 Release 建立前，请先使用本地构建命令。
 
 全局参数必须放在子命令前。默认网关地址为 `http://192.168.1.1`。
 
+为当前操作系统用户保存一次凭据：
+
 ```bash
-ctgw --username useradmin --password-stdin status
+ctgw --username useradmin --password-stdin auth login
+ctgw auth status
+ctgw status
 ```
 
-通过标准输入输入密码。无人值守运行也支持 `CTGW_URL`、`CTGW_USERNAME` 和 `CTGW_PASSWORD`。
+`auth login` 会先连接网关验证凭据，成功后才保存。密码进入 macOS Keychain、Windows Credential Manager 或 Linux Secret Service；用户配置目录只记录 URL 和用户名。删除保存内容：
+
+```bash
+ctgw auth logout
+```
+
+Linux/BSD 桌面环境需要可用的 Secret Service `login` collection。临时或无人值守运行仍可使用 `CTGW_URL`、`CTGW_USERNAME` 和 `CTGW_PASSWORD`；显式参数和环境变量优先于已保存 profile。
 
 不要把密码直接写进命令参数、仓库文件、Issue、CI 日志或 shell 历史。
 

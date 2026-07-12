@@ -10,11 +10,53 @@ import (
 	"testing"
 
 	"github.com/zedoCN/telecom-gateway/gateway"
+	"github.com/zedoCN/telecom-gateway/internal/credentials"
 )
+
+type fakeCredentialStore struct {
+	profile  credentials.Profile
+	password string
+	saved    bool
+}
+
+func (store *fakeCredentialStore) Load() (credentials.Profile, error) {
+	if !store.saved {
+		return credentials.Profile{}, credentials.ErrNoProfile
+	}
+	return store.profile, nil
+}
+
+func (store *fakeCredentialStore) Save(profile credentials.Profile, password string) error {
+	store.profile = profile
+	store.password = password
+	store.saved = true
+	return nil
+}
+
+func (store *fakeCredentialStore) Password(credentials.Profile) (string, error) {
+	if !store.saved {
+		return "", credentials.ErrNoProfile
+	}
+	return store.password, nil
+}
+
+func (store *fakeCredentialStore) Delete() error {
+	store.saved = false
+	store.password = ""
+	return nil
+}
+
+func (store *fakeCredentialStore) Path() string {
+	return "/example/profile.json"
+}
+
+func runForTest(args []string, stdin *strings.Reader, stdout, stderr *bytes.Buffer, version string) int {
+	return run(args, stdin, stdout, stderr, version, nil, nil)
+}
 
 func TestHelpDoesNotRequireCredentials(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"help"}, strings.NewReader(""), &stdout, &stderr, "test"); code != 0 {
+	if code := runForTest([]string{"help"}, strings.NewReader(""), &stdout, &stderr, "test"); code != 0 {
 		t.Fatalf("Run(help) = %d, stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "port list") {
@@ -51,7 +93,7 @@ func TestFindAndComparePortMapping(t *testing.T) {
 
 func TestVersionDoesNotRequireCredentials(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr, "v1.2.3"); code != 0 {
+	if code := runForTest([]string{"version"}, strings.NewReader(""), &stdout, &stderr, "v1.2.3"); code != 0 {
 		t.Fatalf("Run(version) = %d, stderr=%s", code, stderr.String())
 	}
 	if stdout.String() != "v1.2.3\n" {
@@ -63,7 +105,7 @@ func TestOperationalCommandRequiresCredentials(t *testing.T) {
 	t.Setenv("CTGW_USERNAME", "")
 	t.Setenv("CTGW_PASSWORD", "")
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"status"}, strings.NewReader(""), &stdout, &stderr, "test"); code != 2 {
+	if code := runForTest([]string{"status"}, strings.NewReader(""), &stdout, &stderr, "test"); code != 2 {
 		t.Fatalf("Run(status) = %d", code)
 	}
 	if !strings.Contains(stderr.String(), "credentials required") {
@@ -118,7 +160,7 @@ func TestPortDisablePerformsReadback(t *testing.T) {
 	defer server.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"--url", server.URL, "port", "disable", "--name", "example", "--yes"}, strings.NewReader(""), &stdout, &stderr, "test")
+	code := runForTest([]string{"--url", server.URL, "port", "disable", "--name", "example", "--yes"}, strings.NewReader(""), &stdout, &stderr, "test")
 	if code != 0 {
 		t.Fatalf("Run(port disable) = %d, stderr=%s", code, stderr.String())
 	}
@@ -128,6 +170,78 @@ func TestPortDisablePerformsReadback(t *testing.T) {
 		t.Fatalf("reads=%d writes=%d enabled=%t", reads, writes, enabled)
 	}
 	if !strings.Contains(stdout.String(), "disabled and verified") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestAuthLoginVerifiesAndStoresCredentials(t *testing.T) {
+	t.Setenv("CTGW_USERNAME", "")
+	t.Setenv("CTGW_PASSWORD", "")
+	token := strings.Repeat("0", 32)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/cgi-bin/luci", func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost {
+			http.SetCookie(writer, &http.Cookie{Name: "sysauth", Value: "example-session"})
+			writer.WriteHeader(http.StatusFound)
+			return
+		}
+		fmt.Fprintf(writer, `<script>var token = %q;</script>`, token)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	store := &fakeCredentialStore{}
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"--url", server.URL, "--username", "example-user", "--password-stdin", "auth", "login"},
+		strings.NewReader("example-pass\n"),
+		&stdout,
+		&stderr,
+		"test",
+		store,
+		nil,
+	)
+	if code != 0 {
+		t.Fatalf("run(auth login) = %d, stderr=%s", code, stderr.String())
+	}
+	if !store.saved || store.profile.URL != server.URL || store.profile.Username != "example-user" || store.password != "example-pass" {
+		t.Fatalf("unexpected stored credentials: %#v", store)
+	}
+	if !strings.Contains(stdout.String(), "verified and stored") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestStoredCredentialsAreUsedForReadOnlyCommand(t *testing.T) {
+	t.Setenv("CTGW_USERNAME", "")
+	t.Setenv("CTGW_PASSWORD", "")
+	token := strings.Repeat("0", 32)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/cgi-bin/luci", func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost {
+			http.SetCookie(writer, &http.Cookie{Name: "sysauth", Value: "example-session"})
+			writer.WriteHeader(http.StatusFound)
+			return
+		}
+		fmt.Fprintf(writer, `<script>var token = %q;</script>`, token)
+	})
+	mux.HandleFunc("/cgi-bin/luci/admin/settings/gwstatus", func(writer http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(writer, `{"cpuUsed":7,"sysTime":60}`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	store := &fakeCredentialStore{
+		profile:  credentials.Profile{URL: server.URL, Username: "example-user"},
+		password: "example-pass",
+		saved:    true,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"status"}, strings.NewReader(""), &stdout, &stderr, "test", store, nil)
+	if code != 0 {
+		t.Fatalf("run(status) = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "7%") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
 	}
 }

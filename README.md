@@ -6,6 +6,8 @@
 
 The project currently targets the LuCI-style CGI interface observed on a **TEWA-1000E** running **Tianyi_V1.0_JS2011**. Other models and firmware versions may expose different authentication, fields, or write behavior. Compatibility claims must be backed by redacted fixtures and hardware verification.
 
+Verified on that model and firmware: login, system-keyring credential reuse, status, default-redacted gateway information, and port-mapping list. Live write operations remain deliberately excluded from routine verification.
+
 ## Features
 
 - Read gateway health, WAN/LAN information, connected devices, and port mappings.
@@ -15,7 +17,7 @@ The project currently targets the LuCI-style CGI interface observed on a **TEWA-
 - Hide MAC addresses, serial numbers, SSIDs, and WAN account names from `info` output by default.
 - Require `--yes` for every mutating command.
 - Reject implicit same-name replacement and verify port-mapping writes by reading the list back.
-- Use only the Go standard library at runtime.
+- Store a verified password in the current OS user's system keyring.
 - Bundle Agent instructions and a reusable `ctgw` operation Skill.
 
 There is deliberately no Web UI or background daemon.
@@ -41,11 +43,21 @@ Until the GitHub repository and first release exist, use the local build command
 
 Global flags must appear before the command. The default gateway URL is `http://192.168.1.1`.
 
+Store credentials once for the current OS user:
+
 ```bash
-ctgw --username useradmin --password-stdin status
+ctgw --username useradmin --password-stdin auth login
+ctgw auth status
+ctgw status
 ```
 
-Enter the password on stdin when prompted by your shell. For unattended use, `CTGW_URL`, `CTGW_USERNAME`, and `CTGW_PASSWORD` are supported.
+`auth login` verifies the credentials against the gateway before saving them. The password goes to macOS Keychain, Windows Credential Manager, or the Linux Secret Service; only the URL and username are written to the current user's configuration directory. Remove both with:
+
+```bash
+ctgw auth logout
+```
+
+Linux and BSD desktop users need an available Secret Service login collection. One-off and unattended use can still supply `CTGW_URL`, `CTGW_USERNAME`, and `CTGW_PASSWORD`; explicit flags and environment values override the stored profile.
 
 Do not place passwords directly in command arguments, repository files, issue reports, CI logs, or shell history.
 

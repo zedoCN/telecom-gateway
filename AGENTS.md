@@ -13,6 +13,7 @@ This repository contains `ctgw`, an open-source Go CLI and library for supported
 
 - `cmd/ctgw/`: executable entry point and build-time version.
 - `internal/cli/`: command parsing, confirmation gates, and output formatting.
+- `internal/credentials/`: user profile metadata and OS keyring integration.
 - `gateway/`: importable protocol client, response models, and synthetic tests.
 - `.agents/skills/develop-telecom-gateway/`: repository development workflow.
 - `.agents/skills/use-ctgw/`: distributable operation Skill.
@@ -32,7 +33,7 @@ This repository contains `ctgw`, an open-source Go CLI and library for supported
 
 1. Reproduce behavior with `httptest` and redacted fixtures.
 2. Keep HTTP/session behavior in `gateway/`; keep presentation and shell semantics in `internal/cli/`.
-3. Prefer the Go standard library. Add a dependency only when it removes meaningful complexity and document why.
+3. Prefer the Go standard library. The keyring dependency exists specifically to avoid plaintext password storage; add other dependencies only when they remove meaningful complexity and document why.
 4. Run `gofmt` on changed Go files.
 5. Run `go test ./...` and `go vet ./...`.
 6. Validate changed Skills with the repository's documented Skill validator.
@@ -40,7 +41,7 @@ This repository contains `ctgw`, an open-source Go CLI and library for supported
 
 ## Public API and CLI compatibility
 
-- Treat exported symbols in `gateway/`, JSON field names, command names, flags, output fields, and exit behavior as public compatibility surfaces.
+- Treat exported symbols in `gateway/`, JSON field names, command names, flags, credential precedence, output fields, and exit behavior as public compatibility surfaces.
 - Prefer additive changes. If a breaking change is necessary, update both READMEs and release notes.
 - Global flags currently precede commands; examples must preserve that ordering.
 - Human output may improve, but `--json` must remain stable enough for automation.

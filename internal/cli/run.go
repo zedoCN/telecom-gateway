@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zedoCN/telecom-gateway/gateway"
+	"github.com/zedoCN/telecom-gateway/internal/credentials"
 )
 
 type globalOptions struct {
@@ -26,9 +27,28 @@ type globalOptions struct {
 	timeout       time.Duration
 }
 
+type credentialStore interface {
+	Load() (credentials.Profile, error)
+	Save(credentials.Profile, string) error
+	Password(credentials.Profile) (string, error)
+	Delete() error
+	Path() string
+}
+
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, version string) int {
-	options, rest, err := parseGlobal(args, stderr)
+	store, storeErr := credentials.New()
+	return run(args, stdin, stdout, stderr, version, store, storeErr)
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, version string, store credentialStore, storeErr error) int {
+	var storedProfile credentials.Profile
+	profileErr := credentials.ErrNoProfile
+	if store != nil && storeErr == nil {
+		storedProfile, profileErr = store.Load()
+	}
+	options, rest, err := parseGlobal(args, stderr, storedProfile)
 	if err != nil {
+		fmt.Fprintf(stderr, "ctgw: %v\n", err)
 		return 2
 	}
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
@@ -39,6 +59,11 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, version strin
 		fmt.Fprintln(stdout, version)
 		return 0
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), options.timeout)
+	defer cancel()
+	if rest[0] == "auth" {
+		return runAuth(ctx, options, rest[1:], stdin, stdout, stderr, store, storeErr, profileErr)
+	}
 
 	password := os.Getenv("CTGW_PASSWORD")
 	if options.passwordStdin {
@@ -48,13 +73,18 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, version strin
 			return 1
 		}
 	}
+	if password == "" && profileErr == nil && sameProfile(options, storedProfile) {
+		password, err = store.Password(storedProfile)
+		if err != nil {
+			fmt.Fprintf(stderr, "ctgw: %v\n", err)
+			return 1
+		}
+	}
 	if options.username == "" || password == "" {
-		fmt.Fprintln(stderr, "ctgw: credentials required; set CTGW_USERNAME and CTGW_PASSWORD, or use --password-stdin")
+		fmt.Fprintln(stderr, "ctgw: credentials required; run ctgw auth login, set CTGW_USERNAME and CTGW_PASSWORD, or use --password-stdin")
 		return 2
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), options.timeout)
-	defer cancel()
 	client, err := gateway.NewClient(options.url, options.username, password)
 	if err != nil {
 		fmt.Fprintf(stderr, "ctgw: %v\n", err)
@@ -71,10 +101,14 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, version strin
 	return 0
 }
 
-func parseGlobal(args []string, stderr io.Writer) (globalOptions, []string, error) {
+func parseGlobal(args []string, stderr io.Writer, stored credentials.Profile) (globalOptions, []string, error) {
+	defaultURL := stored.URL
+	if defaultURL == "" {
+		defaultURL = "http://192.168.1.1"
+	}
 	options := globalOptions{
-		url:      envOrDefault("CTGW_URL", "http://192.168.1.1"),
-		username: os.Getenv("CTGW_USERNAME"),
+		url:      envOrDefault("CTGW_URL", defaultURL),
+		username: envOrDefault("CTGW_USERNAME", stored.Username),
 		timeout:  15 * time.Second,
 	}
 	flags := flag.NewFlagSet("ctgw", flag.ContinueOnError)
@@ -91,6 +125,118 @@ func parseGlobal(args []string, stderr io.Writer) (globalOptions, []string, erro
 		return options, nil, errors.New("timeout must be positive")
 	}
 	return options, flags.Args(), nil
+}
+
+func runAuth(
+	ctx context.Context,
+	options globalOptions,
+	args []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	store credentialStore,
+	storeErr, profileErr error,
+) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "ctgw: auth subcommand required: login, status, or logout")
+		return 2
+	}
+	if storeErr != nil {
+		fmt.Fprintf(stderr, "ctgw: initialize credential store: %v\n", storeErr)
+		return 1
+	}
+	if store == nil {
+		fmt.Fprintln(stderr, "ctgw: credential store is unavailable")
+		return 1
+	}
+	switch args[0] {
+	case "login":
+		if options.username == "" {
+			fmt.Fprintln(stderr, "ctgw: --username or CTGW_USERNAME is required")
+			return 2
+		}
+		password := os.Getenv("CTGW_PASSWORD")
+		var err error
+		if options.passwordStdin {
+			password, err = readPassword(stdin)
+			if err != nil {
+				fmt.Fprintf(stderr, "ctgw: read password: %v\n", err)
+				return 1
+			}
+		}
+		if password == "" {
+			fmt.Fprintln(stderr, "ctgw: auth login requires CTGW_PASSWORD or --password-stdin")
+			return 2
+		}
+		client, err := gateway.NewClient(options.url, options.username, password)
+		if err != nil {
+			fmt.Fprintf(stderr, "ctgw: %v\n", err)
+			return 2
+		}
+		if err := client.Login(ctx); err != nil {
+			fmt.Fprintf(stderr, "ctgw: credentials were not stored because login failed: %v\n", err)
+			return 1
+		}
+		profile := credentials.Profile{URL: options.url, Username: options.username}
+		if err := store.Save(profile, password); err != nil {
+			fmt.Fprintf(stderr, "ctgw: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "credentials verified and stored for %s\n", options.url)
+		return 0
+	case "status":
+		if profileErr != nil {
+			if errors.Is(profileErr, credentials.ErrNoProfile) {
+				fmt.Fprintln(stdout, "no stored credentials")
+				return 0
+			}
+			fmt.Fprintf(stderr, "ctgw: %v\n", profileErr)
+			return 1
+		}
+		profile, err := store.Load()
+		if err != nil {
+			fmt.Fprintf(stderr, "ctgw: %v\n", err)
+			return 1
+		}
+		if _, err := store.Password(profile); err != nil {
+			fmt.Fprintf(stderr, "ctgw: profile exists but keyring entry is unavailable: %v\n", err)
+			return 1
+		}
+		if options.json {
+			if err := writeJSON(stdout, map[string]string{
+				"password_storage": "system-keyring",
+				"url":              profile.URL,
+				"username":         profile.Username,
+			}); err != nil {
+				fmt.Fprintf(stderr, "ctgw: %v\n", err)
+				return 1
+			}
+			return 0
+		}
+		fmt.Fprintf(stdout, "URL\t%s\nUsername\t%s\nPassword\tsystem keyring\nProfile\t%s\n", profile.URL, profile.Username, store.Path())
+		return 0
+	case "logout":
+		if errors.Is(profileErr, credentials.ErrNoProfile) {
+			fmt.Fprintln(stdout, "no stored credentials")
+			return 0
+		}
+		if profileErr != nil {
+			fmt.Fprintf(stderr, "ctgw: %v\n", profileErr)
+			return 1
+		}
+		if err := store.Delete(); err != nil {
+			fmt.Fprintf(stderr, "ctgw: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "stored credentials deleted")
+		return 0
+	default:
+		fmt.Fprintf(stderr, "ctgw: unknown auth subcommand %q\n", args[0])
+		return 2
+	}
+}
+
+func sameProfile(options globalOptions, profile credentials.Profile) bool {
+	return strings.TrimRight(options.url, "/") == strings.TrimRight(profile.URL, "/") && options.username == profile.Username
 }
 
 func execute(ctx context.Context, client *gateway.Client, args []string, jsonOutput bool, stdout, stderr io.Writer) error {
@@ -396,6 +542,9 @@ Usage:
   ctgw [global flags] <command> [command flags]
 
 Commands:
+  auth login                     Verify and store credentials for this OS user
+  auth status                    Show the stored profile without its password
+  auth logout                    Delete the stored profile and keyring entry
   status                         Show gateway status
   info [--show-sensitive]        Show gateway information
   devices                        List connected devices
@@ -408,12 +557,13 @@ Commands:
   version                        Print the ctgw version
 
 Global flags:
-  --url URL           Gateway URL (default CTGW_URL or http://192.168.1.1)
-  --username NAME     Gateway username (default CTGW_USERNAME)
+  --url URL           Gateway URL (stored profile, CTGW_URL, or http://192.168.1.1)
+  --username NAME     Gateway username (stored profile or CTGW_USERNAME)
   --password-stdin    Read the password from stdin instead of CTGW_PASSWORD
   --json              Write JSON output
   --timeout DURATION  Total command timeout (default 15s)
 
+Run ctgw --username NAME --password-stdin auth login once to store credentials.
 Run read-only commands before any change. Mutating commands always require --yes.
 `)
 }

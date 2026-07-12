@@ -6,7 +6,15 @@ Place global flags before the command:
 ctgw [--url URL] [--username NAME] [--password-stdin] [--json] [--timeout DURATION] COMMAND
 ```
 
-Environment alternatives are `CTGW_URL`, `CTGW_USERNAME`, and `CTGW_PASSWORD`. Never place password literals in command arguments.
+Store and inspect a verified profile for the current OS user:
+
+```text
+ctgw --username NAME --password-stdin auth login
+ctgw auth status
+ctgw auth logout
+```
+
+The password is held by the OS keyring; the profile contains only URL and username. Environment alternatives are `CTGW_URL`, `CTGW_USERNAME`, and `CTGW_PASSWORD`. Explicit flags and environment values override the profile. Never place password literals in command arguments.
 
 ## Read-only commands
 

@@ -22,6 +22,7 @@ Build a small, auditable CLI and Go library for authorized management of support
 - Keep HTTP, authentication, response parsing, validation, and exported models in `gateway/`.
 - Keep flags, environment variables, confirmation gates, exit codes, tables, and JSON presentation in `internal/cli/`.
 - Keep `cmd/ctgw/` limited to process wiring and build-time version injection.
+- Keep profile metadata and OS keyring access in `internal/credentials/`; never add a plaintext password fallback.
 - Do not add a Web UI or daemon unless project scope is explicitly changed.
 - Prefer the standard library and keep the binary easy to cross-compile.
 
@@ -39,6 +40,7 @@ Build a small, auditable CLI and Go library for authorized management of support
 - Preserve explicit `--yes` gates for every mutation.
 - Keep destructive operations scoped to one exact object and exclude bulk operations.
 - Keep sensitive `info` fields opt-in and redact them from default JSON as well as tables.
+- Test credential flows through injected stores; ordinary tests must not touch the developer's real OS keyring or user profile.
 - Do not contact a live gateway during ordinary tests.
 
 ## Public compatibility

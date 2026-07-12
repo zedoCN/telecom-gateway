@@ -12,7 +12,7 @@ Operate supported gateways through the `ctgw` CLI while keeping credentials and 
 1. Locate the executable with `command -v ctgw`; if working in its source repository, use `go run ./cmd/ctgw` or build `bin/ctgw`.
 2. Run `ctgw help` and `ctgw version` before relying on a remembered command surface.
 3. Confirm that the target gateway is owned by the user or explicitly authorized for management.
-4. Use `CTGW_URL` and `CTGW_USERNAME`, or their global flags. Prefer an existing secure `CTGW_PASSWORD` environment value or `--password-stdin`; never put a password literal in a command argument.
+4. Run `ctgw auth status`. Prefer a verified profile saved with `ctgw --username NAME --password-stdin auth login`; otherwise use `CTGW_URL` and `CTGW_USERNAME` plus an existing secure `CTGW_PASSWORD` value or `--password-stdin`.
 5. Keep global flags before the command.
 
 Read [references/commands.md](references/commands.md) when exact command flags or output choices are needed.
@@ -48,4 +48,5 @@ For reboot, confirm the expected outage and recovery path first, then use `ctgw 
 - Do not invent bulk delete, bulk disable, bulk enable, wildcard, or implicit replacement commands.
 - Do not test write behavior against a live gateway merely to discover its semantics.
 - Do not expose credentials through `echo`, process arguments, shell traces, tool output, or generated scripts.
+- Do not read passwords back from the OS keyring or copy the user profile into reports. Let `ctgw` resolve the saved credential internally.
 - Do not claim a model is supported without project documentation and verified fixtures.
