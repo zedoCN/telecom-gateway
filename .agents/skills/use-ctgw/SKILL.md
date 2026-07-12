@@ -9,7 +9,7 @@ Operate supported gateways through the `ctgw` CLI while keeping credentials and 
 
 ## Prepare
 
-1. Locate the executable with `command -v ctgw`; if working in its source repository, use `go run ./cmd/ctgw` or build `bin/ctgw`.
+1. Resolve the executable in this order: use this Skill's executable `bin/ctgw` when bundled, otherwise use `command -v ctgw`; if working in the source repository, use `go run ./cmd/ctgw` or build `bin/ctgw`.
 2. Run `ctgw help` and `ctgw version` before relying on a remembered command surface.
 3. Confirm that the target gateway is owned by the user or explicitly authorized for management.
 4. Run `ctgw auth status`. Prefer a verified profile saved with `ctgw --username NAME --password-stdin auth login`; otherwise use `CTGW_URL` and `CTGW_USERNAME` plus an existing secure `CTGW_PASSWORD` value or `--password-stdin`.
