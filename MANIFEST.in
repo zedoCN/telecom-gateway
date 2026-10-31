@@ -1,0 +1,6 @@
+include LICENSE README.md README-zh-cn.md AGENTS.md CONTRIBUTING.md SECURITY.md Makefile
+recursive-include .agents/skills *.md *.yaml *.py LICENSE
+recursive-include scripts *.py
+recursive-include tests *.py
+global-exclude *.pyc
+prune .agents/skills/use-ctgw/scripts/ctgw/__pycache__

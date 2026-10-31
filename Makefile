@@ -1,12 +1,13 @@
-.PHONY: build test check
+.PHONY: build test check skill
 
 build:
-	go build -o bin/ctgw ./cmd/ctgw
+	python3 -m build
 
 test:
-	go test ./...
+	PYTHONPATH=.agents/skills/use-ctgw/scripts python3 -m unittest discover -s tests -v
 
-check:
-	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
-	go test ./...
-	go vet ./...
+check: test
+	git diff --check
+
+skill:
+	python3 scripts/skill_bundle.py pack

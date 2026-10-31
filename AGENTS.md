@@ -1,53 +1,25 @@
 # AGENTS.md
 
-This repository contains `ctgw`, an open-source Go CLI and library for supported China Telecom residential gateways. Treat every reachable gateway as production network equipment.
+This repository contains the Python `ctgw` CLI and a self-contained Agent Skill. The original Go CLI/library lives on branch `go`. Treat reachable gateways as production equipment.
 
-## Start here
+## Start and map
 
-1. Read `README.md` and `README-zh-cn.md` for the public compatibility promise.
-2. Use `$develop-telecom-gateway` for code, tests, command behavior, and documentation changes.
-3. Use `$use-ctgw` when operating a real gateway through the CLI.
-4. Inspect the current code and tests before changing protocol assumptions.
+Read both READMEs for compatibility, then `.agents/skills/develop-telecom-gateway/SKILL.md` for development or `.agents/skills/use-ctgw/SKILL.md` for operation.
 
-## Repository map
+The single runtime source is `.agents/skills/use-ctgw/scripts/ctgw/`: `client.py` handles bounded HTTP/authentication, `models.py` validates responses, `credentials.py` owns profiles/native keyrings, and `cli.py` owns command semantics, redaction and verified changes. `scripts/ctgw.py` is the standalone PEP 723 entry; root packaging installs that same package. Tests live in `tests/`; `scripts/skill_bundle.py` distributes only approved Skill files.
 
-- `cmd/ctgw/`: executable entry point and build-time version.
-- `internal/cli/`: command parsing, confirmation gates, and output formatting.
-- `internal/credentials/`: user profile metadata and OS keyring integration.
-- `gateway/`: importable protocol client, response models, and synthetic tests.
-- `.agents/skills/develop-telecom-gateway/`: repository development workflow.
-- `.agents/skills/use-ctgw/`: distributable operation Skill.
-- `README.md` and `README-zh-cn.md`: English and Simplified Chinese user documentation; keep behavior and examples aligned.
+## Boundaries
 
-## Non-destructive rules
+- Never commit or print credentials, cookies, tokens, full device exports or real device identifiers.
+- Ordinary tests use localhost synthetic gateways and injected stores, never live devices or the developer's native keyring.
+- Live operations require user authorization and an identified target. Inspect first, preserve recovery access, verify exact affected state.
+- Preserve `--yes`, single exact mappings, redaction, bounded responses, no redirects and no automatic write retry. Never add bulk operations or implicit replacement.
+- Keep Python standard library protocol/CLI; keyring is the sole runtime dependency for native secret storage. No plaintext fallback.
+- Do not claim hardware/firmware compatibility or native keyring acceptance from CI alone.
+- Preserve commands, flags, JSON keys and credential precedence; document intentional changes in both languages. Global flags precede commands; human formatting may change.
 
-- Never commit or print passwords, cookies, tokens, WAN account names, full device exports, MAC addresses, serial numbers, SSIDs, or real public IP snapshots.
-- Never run live gateway tests unless the user explicitly requests them and identifies the authorized target.
-- Run read-only inspection before any live mutation and verify the exact affected object afterward.
-- Keep every write operation narrow. Do not add bulk delete, bulk disable, bulk enable, or implicit replacement commands.
-- Preserve `--yes` confirmation for mutations. Do not make write operations the default behavior of a command.
-- Keep sensitive fields redacted by default. An explicit opt-in may reveal them locally, but tests, issues, and documentation must remain synthetic.
-- Do not claim compatibility with a model or firmware based only on similar HTML, endpoint names, or third-party reports.
+## Validation and delivery
 
-## Development workflow
+Run `python -m unittest discover -s tests -v`, build/install wheel and source bundles when packaging changes, validate changed Skills and run `git diff --check`. Review staged files for secrets. Tests must not import an installed stale copy instead of the canonical source.
 
-1. Reproduce behavior with `httptest` and redacted fixtures.
-2. Keep HTTP/session behavior in `gateway/`; keep presentation and shell semantics in `internal/cli/`.
-3. Prefer the Go standard library. The keyring dependency exists specifically to avoid plaintext password storage; add other dependencies only when they remove meaningful complexity and document why.
-4. Run `gofmt` on changed Go files.
-5. Run `go test ./...` and `go vet ./...`.
-6. Validate changed Skills with the repository's documented Skill validator.
-7. Run `git diff --check` and inspect the staged diff for sensitive values before committing.
-
-## Public API and CLI compatibility
-
-- Treat exported symbols in `gateway/`, JSON field names, command names, flags, credential precedence, output fields, and exit behavior as public compatibility surfaces.
-- Prefer additive changes. If a breaking change is necessary, update both READMEs and release notes.
-- Global flags currently precede commands; examples must preserve that ordering.
-- Human output may improve, but `--json` must remain stable enough for automation.
-
-## Git
-
-- Keep commits small and focused.
-- Do not rewrite contributor history or force-push without explicit approval.
-- Do not revert unrelated user changes.
+Use small focused commits. Do not force-push, rewrite history or modify unrelated work. New branches default to `codex/`. Go archive branch must retain the original implementation.

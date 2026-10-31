@@ -1,6 +1,10 @@
 /bin/
 /dist/
-/coverage.out
+/build/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
 *.log
 .DS_Store
 .idea/

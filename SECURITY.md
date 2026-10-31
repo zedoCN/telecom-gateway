@@ -1,7 +1,9 @@
 # Security policy
 
-Please report vulnerabilities privately through GitHub Security Advisories. Do not open a public issue containing gateway credentials, session cookies, tokens, serial numbers, WAN account names, MAC addresses, SSIDs, or unredacted gateway responses.
+Report vulnerabilities privately through GitHub Security Advisories. Do not post credentials, cookies, tokens, device identifiers, WAN accounts or raw gateway responses in public issues.
 
-This project interacts with a device administration interface. Test against hardware you own or are authorized to manage, inspect current state before applying changes, and keep a separate recovery path available.
+Treat devices as production equipment. Use only authorized hardware, inspect state before changes and preserve a recovery path. Every write requires --yes; mapping writes verify the target and unchanged unrelated rules. An uncertain result must not be retried automatically.
 
-`ctgw auth login` stores passwords in the current OS user's system keyring. The profile file contains only the gateway URL and username and is created with user-only permissions. Environment variables remain available for automation, but may be observable to other processes running as the same user.
+Passwords are stored only in the current user's native Keychain, Credential Manager or Secret Service. There is no plaintext fallback. Profiles contain URL and username only; POSIX modes are 0700/0600 and Windows uses inherited user ACLs. Process environment credentials may be observable to other processes running as the same user.
+
+Default info output redacts known sensitive fields, but device lists and mappings remain private. HTTP management endpoints do not encrypt credentials; use a trusted network or secure tunnel. Redirects are refused and raw error responses are withheld. Standard Python proxy settings apply. Tests and CI use synthetic devices and do not prove real-device or native-keyring acceptance.

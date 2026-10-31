@@ -1,11 +1,7 @@
 # Contributing
 
-Contributions are welcome. Open an issue before adding support for a new gateway family so that response fixtures and compatibility boundaries can be discussed without exposing device secrets.
+Read AGENTS.md and `.agents/skills/develop-telecom-gateway/SKILL.md`. Main uses Python 3.10+; the original Go implementation remains on `go`.
 
-Before submitting a pull request:
+Install with `python -m pip install -e .`, then run `python -m unittest discover -s tests -v` and `git diff --check`. Packaging changes also require wheel/sdist installation and an extracted Skill smoke test. CI checks Linux, macOS and Windows without live hardware or native credentials.
 
-1. Add or update redacted `httptest` fixtures; never commit live credentials or full device exports.
-2. Run `gofmt -w` on changed Go files.
-3. Run `go test ./...` and `go vet ./...`.
-4. Update both `README.md` and `README-zh-cn.md` when user-facing behavior changes.
-5. Keep write operations narrowly scoped and explicitly confirmed.
+Use synthetic fixtures and injected stores. Never publish real credentials, cookies, tokens, identifiers or raw device exports. Keep writes exact, confirmed and verified; document public changes in both READMEs. Report vulnerabilities through the private process in SECURITY.md.

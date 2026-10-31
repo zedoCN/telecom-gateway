@@ -1,4 +1,4 @@
 interface:
-  display_name: "Use ctgw"
-  short_description: "Safely inspect and manage telecom gateways"
-  default_prompt: "Use $use-ctgw to inspect or change a supported telecom gateway safely."
+  display_name: "Telecom Gateway"
+  short_description: "Inspect telecom gateways with bundled Python CLI"
+  default_prompt: "Use $use-ctgw to inspect or manage an authorized supported telecom gateway."

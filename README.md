@@ -1,128 +1,97 @@
-# Telecom Gateway CLI
+# Telecom Gateway
 
-[简体中文](README-zh-cn.md) | English
+[简体中文](README-zh-cn.md)
 
-`ctgw` is an experimental, open-source command-line client for selected China Telecom residential gateways. It replaces an older Java/Kotlin API and browser-based manager with one small Go binary and an importable Go package.
+`ctgw` is a Python CLI and self-contained Agent Skill for authorized management of a **China Telecom TEWA-1000E running Tianyi_V1.0_JS2011**. Similar web interfaces do not establish support for other hardware; TP-Link SAR205GP-CM is not supported.
 
-The project currently targets the LuCI-style CGI interface observed on a **TEWA-1000E** running **Tianyi_V1.0_JS2011**. Other models and firmware versions may expose different authentication, fields, or write behavior. Compatibility claims must be backed by redacted fixtures and hardware verification.
-
-Verified on that model and firmware: login, system-keyring credential reuse, status, default-redacted gateway information, and port-mapping list. Live write operations remain deliberately excluded from routine verification.
-
-## Features
-
-- Read gateway health, WAN/LAN information, connected devices, and port mappings.
-- Add, enable, disable, or delete one exact port mapping.
-- Request a gateway reboot.
-- Produce human-readable tables or structured JSON.
-- Hide MAC addresses, serial numbers, SSIDs, and WAN account names from `info` output by default.
-- Require `--yes` for every mutating command.
-- Reject implicit same-name replacement and verify port-mapping writes by reading the list back.
-- Store a verified password in the current OS user's system keyring.
-- Bundle Agent instructions and a reusable `ctgw` operation Skill.
-
-There is deliberately no Web UI or background daemon.
+`main` contains Python + Agent Skill. The original Go CLI/library is preserved on the [`go` branch](https://github.com/zedoCN/telecom-gateway/tree/go), starting at `e5058897d24e8d335c84248ff57e5022a0bc2deb`. Go users can use `go install github.com/zedoCN/telecom-gateway/cmd/ctgw@go`; main no longer provides the Go library.
 
 ## Install
 
-Go 1.22 or newer is required when building from source.
+Requires Python 3.10+. Install the CLI with [uv](https://docs.astral.sh/uv/) or pip in a virtual environment:
 
-```bash
-go install github.com/zedoCN/telecom-gateway/cmd/ctgw@latest
+```sh
+uv tool install 'git+https://github.com/zedoCN/telecom-gateway.git@main'
+ctgw help
+ctgw --json doctor
 ```
 
-From a clone:
+From a checkout, `python -m pip install .` installs the same package. No PyPI release is currently required for these commands.
 
-```bash
-make build
-./bin/ctgw version
+### Agent Skill
+
+Install the entire `.agents/skills/use-ctgw` directory with an Agent Skill installer, or from a checkout:
+
+```sh
+python scripts/skill_bundle.py install
+# For Codex's alternate Skill root:
+python scripts/skill_bundle.py install --destination ~/.codex/skills
+python scripts/skill_bundle.py pack --output dist/use-ctgw.zip
 ```
 
-Until the GitHub repository and first release exist, use the local build command.
+The installer refuses existing targets, including symlinks. Update through the existing installation's owner rather than overwriting it. The ZIP includes a SHA-256 sidecar and contains the Skill, Python runtime source, references and MIT license. It needs neither a Go compiler nor an architecture-specific executable or PATH change.
 
-## Authentication
+An installed Skill runs independently of this checkout:
 
-Global flags must appear before the command. The default gateway URL is `http://192.168.1.1`.
+```sh
+uv run /absolute/path/use-ctgw/scripts/ctgw.py --json doctor
+```
 
-Store credentials once for the current OS user:
+`uv` reads the script's dependency metadata. With Python and `keyring` already installed, `python /absolute/path/use-ctgw/scripts/ctgw.py ...` also works. Local help/version/doctor and environment-only gateway access do not require loading a keyring backend. The ZIP includes source, not Python or dependency wheels; dependency bootstrap may require Internet access.
 
-```bash
-ctgw --username useradmin --password-stdin auth login
+## Credentials
+
+Global flags precede the command:
+
+```text
+ctgw [--url URL] [--username NAME] [--password-stdin] [--json] [--timeout 15s] COMMAND
+ctgw --username NAME --password-stdin auth login
 ctgw auth status
-ctgw status
-```
-
-`auth login` verifies the credentials against the gateway before saving them. The password goes to macOS Keychain, Windows Credential Manager, or the Linux Secret Service; only the URL and username are written to the current user's configuration directory. Remove both with:
-
-```bash
 ctgw auth logout
 ```
 
-Linux and BSD desktop users need an available Secret Service login collection. One-off and unattended use can still supply `CTGW_URL`, `CTGW_USERNAME`, and `CTGW_PASSWORD`; explicit flags and environment values override the stored profile.
+Supply passwords through an existing secure stdin source or process environment, never a literal argument or a public log. `auth login` verifies the gateway login before saving. `auth status` and `auth logout` manage local credentials without contacting the gateway. Flags override `CTGW_URL`/`CTGW_USERNAME`, which override the saved profile. Password stdin overrides `CTGW_PASSWORD`; the saved secret is used only for the same URL and username. Default URL is `http://192.168.1.1`.
 
-Do not place passwords directly in command arguments, repository files, issue reports, CI logs, or shell history.
+Passwords stay in macOS Keychain, Windows Credential Manager, or Linux Secret Service (an available login collection and D-Bus session are needed). There is no plaintext fallback. Headless hosts can use process credentials instead. Profiles store only URL and username at:
 
-## Usage
+- macOS: `~/Library/Application Support/ctgw/profile.json`
+- Windows: `%APPDATA%/ctgw/profile.json`
+- Linux: `$XDG_CONFIG_HOME/ctgw/profile.json`, otherwise `~/.config/ctgw/profile.json`
 
-Start with read-only commands:
+POSIX profile directories/files use 0700/0600; Windows relies on the user's inherited ACLs. Existing Go macOS encoded secrets and Linux account attributes are supported by synthetic compatibility tests; native migration has not been exercised on every OS. **Windows users migrating from Go must run `auth login` again**, because the native credential representation differs. Python `auth logout` does not remove the old Go Windows entry.
 
-```bash
-ctgw --username useradmin --password-stdin status
-ctgw --username useradmin --password-stdin info
-ctgw --username useradmin --password-stdin devices
-ctgw --username useradmin --password-stdin port list
+## Inspect and change
+
+```sh
+ctgw --json status
+ctgw --json info
+ctgw --json devices
+ctgw --json port list
+ctgw --json port add --name demo --client 192.0.2.10 --protocol TCP --external-port 8443 --internal-port 443 --yes
+ctgw --json port disable --name demo --yes
+ctgw --json port enable --name demo --yes
+ctgw --json port delete --name demo --yes
+ctgw --json reboot --yes
 ```
 
-Use `--json` before the command for machine-readable output:
+Inspect first and keep a recovery path. Every gateway write requires `--yes`. Mapping changes affect one exact name, reject duplicate/ambiguous names or incomplete snapshots, and verify the target plus unrelated rules afterward. Already-enabled/disabled rules are successful no-ops. No bulk operation, implicit replacement, automatic retry or automatic rollback is provided. If a write times out or read-back fails, inspect state before deciding whether to retry. A reboot receipt means requested, not recovered; check gateway state and Internet reachability separately.
 
-```bash
-ctgw --json --username useradmin --password-stdin port list
+`info` redacts MAC, serial number, SSIDs and WAN account in both text and JSON; `info --show-sensitive` explicitly reveals known fields locally. Devices and mappings can still contain private network information.
+
+Read command JSON retains Go field names. JSON now also covers local diagnostics/auth and mutations, for example `{"action":"port disable","name":"demo","changed":true,"verified":true}` or `{"action":"reboot","requested":true}`. Errors go to stderr without raw gateway bodies. Exit codes: 0 success, 1 operational failure/uncertain result, 2 usage/missing credentials, 130 interrupted. Human formatting can differ from Go.
+
+`--timeout` accepts seconds or durations such as `250ms`, `15s`, `1m30s`. It bounds socket I/O across the command; OS DNS resolution can exceed that budget. Responses are size-limited and redirects are refused. Proxy environment variables follow Python's standard URL opener behavior; configure `NO_PROXY` appropriately for private gateways. HTTP gateways send credentials without transport encryption; operate only on trusted networks or a secure tunnel.
+
+## Development and verification
+
+```sh
+python -m pip install -e .
+python -m unittest discover -s tests -v
+python scripts/skill_bundle.py pack
+python -m pip install build
+python -m build
 ```
 
-Sensitive gateway identifiers remain omitted unless explicitly requested:
+Protocol/CLI tests use a localhost synthetic gateway; credential tests inject a fake store. Ordinary tests never access a real gateway or system keyring. CI exercises Python 3.10/3.13 on Linux, macOS and Windows, and builds the wheel, source and Skill bundles. This does not establish native keyring or real-device write acceptance. The Python migration has no new live-hardware acceptance claim; the original Go version had read-only verification on the stated model/firmware.
 
-```bash
-ctgw --username useradmin --password-stdin info --show-sensitive
-```
-
-The CLI inspects the current mapping list before and after a change, rejects implicit same-name replacement, and verifies the read-back. Every write requires `--yes`:
-
-```bash
-ctgw port add \
-  --name example-game \
-  --client 192.0.2.10 \
-  --protocol UDP \
-  --external-port 8211 \
-  --internal-port 8211 \
-  --yes
-
-ctgw port disable --name example-game --yes
-ctgw port enable --name example-game --yes
-ctgw port delete --name example-game --yes
-ctgw reboot --yes
-```
-
-The examples use documentation-only addresses. Supply authentication with global flags or environment variables. Run `ctgw help` for the complete command surface.
-
-## Agent use
-
-The repository is designed for Agent-assisted development:
-
-- [`AGENTS.md`](AGENTS.md) defines repository boundaries and validation rules.
-- [`.agents/skills/develop-telecom-gateway/SKILL.md`](.agents/skills/develop-telecom-gateway/SKILL.md) guides implementation work.
-- [`.agents/skills/use-ctgw/SKILL.md`](.agents/skills/use-ctgw/SKILL.md) guides safe operation of the CLI.
-
-To make the operation Skill available to a personal Codex installation, copy the entire `use-ctgw` directory into `${CODEX_HOME:-$HOME/.codex}/skills/`, then invoke `$use-ctgw`.
-
-## Development
-
-```bash
-make check
-```
-
-Tests use `httptest` and synthetic documentation addresses. Do not add live credentials, cookies, tokens, full gateway exports, WAN account names, MAC addresses, serial numbers, or SSIDs to fixtures.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before submitting changes.
-
-## License
-
-[MIT](LICENSE)
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and [LICENSE](LICENSE).

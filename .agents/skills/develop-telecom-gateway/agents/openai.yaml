@@ -1,4 +1,4 @@
 interface:
   display_name: "Develop Telecom Gateway"
-  short_description: "Develop and validate the ctgw Go repository"
-  default_prompt: "Use $develop-telecom-gateway to implement and validate a change in this repository."
+  short_description: "Develop the Python CLI and self-contained Agent Skill"
+  default_prompt: "Use $develop-telecom-gateway to implement and validate a repository change."

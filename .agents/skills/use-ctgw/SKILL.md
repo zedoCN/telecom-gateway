@@ -1,52 +1,49 @@
 ---
 name: use-ctgw
-description: Safely use the ctgw command-line client to inspect supported China Telecom residential gateways and manage exact port mappings or request a reboot. Use when Codex needs gateway status, device information, connected-device lists, JSON output, port-mapping inspection or a user-authorized single mapping change on hardware managed through ctgw.
+description: Inspect supported China Telecom gateways and manage exact port mappings or request a reboot through the bundled Python ctgw CLI. Use for gateway status, device information, connected devices, JSON inspection, or a user-authorized single mapping change on TEWA-1000E with Tianyi_V1.0_JS2011; not for unrelated router models.
 ---
 
 # Use ctgw
 
-Operate supported gateways through the `ctgw` CLI while keeping credentials and device identifiers out of commands, logs, and reports.
+This Skill includes its complete Python CLI. Treat gateways as production network equipment.
 
 ## Prepare
 
-1. Resolve the executable in this order: use this Skill's executable `bin/ctgw` when bundled, otherwise use `command -v ctgw`; if working in the source repository, use `go run ./cmd/ctgw` or build `bin/ctgw`.
-2. Run `ctgw help` and `ctgw version` before relying on a remembered command surface.
-3. Confirm that the target gateway is owned by the user or explicitly authorized for management.
-4. Run `ctgw auth status`. Prefer a verified profile saved with `ctgw --username NAME --password-stdin auth login`; otherwise use `CTGW_URL` and `CTGW_USERNAME` plus an existing secure `CTGW_PASSWORD` value or `--password-stdin`.
-5. Keep global flags before the command.
+1. Resolve this Skill's absolute directory. Use `uv run <skill>/scripts/ctgw.py` as the command prefix; no checkout, Go compiler, architecture-specific executable or PATH installation is required. Python 3.10+ is required. If Python and `keyring` are already available, `python <skill>/scripts/ctgw.py` also works. Dependency bootstrap may need Internet; read-only environment-credential calls and local diagnostics can run without keyring.
+2. Run `... help`, `... version` and `... --json doctor`. Doctor is local and does not contact the gateway or read stored passwords.
+3. Establish the authorized target from the current conversation. Supported model/firmware: **TEWA-1000E / Tianyi_V1.0_JS2011**. Do not assume support for a separate PPPoE router (including TP-Link SAR205GP-CM).
+4. Run `... auth status` to check existing credentials internally. Use saved credentials, an existing secure process environment, or `--password-stdin`. Never ask for passwords in chat or print a keyring secret. Login and native keyring migration details are in [references/commands.md](references/commands.md).
+5. Put global flags before commands; prefer `--json` for parsing.
 
-Read [references/commands.md](references/commands.md) when exact command flags or output choices are needed.
+Read [references/commands.md](references/commands.md) for exact flags, credential precedence, outputs and failure handling.
 
 ## Inspect
 
-Start with the narrowest read-only command:
+Start with the narrowest relevant read:
 
-```bash
-ctgw status
-ctgw info
-ctgw devices
-ctgw port list
+```text
+<prefix> --json status
+<prefix> --json info
+<prefix> --json devices
+<prefix> --json port list
 ```
 
-Use `--json` for parsing. Do not use `info --show-sensitive` unless the user explicitly needs those local fields. Never reproduce sensitive output in chat, committed files, issues, or logs.
+Do not use `info --show-sensitive` unless those fields are specifically needed. Device lists, internal IPs and rule names can still be private; report only necessary findings.
 
 ## Change
 
-Only perform a mutation when the user explicitly requests it.
+Use the user's existing authorization; do not request the same permission again. Do not infer authorization for unrelated writes from a read request.
 
-1. Run `ctgw port list` immediately before a mapping change.
-2. Identify one exact rule name or one complete new rule.
-3. Preserve an already verified recovery path to the gateway.
-4. Run the exact mutation with `--yes`; do not bypass this gate.
-5. Run `ctgw port list` again and verify only the intended object changed.
-6. Report the requested change and read-back result without copying unrelated rules or sensitive fields.
+1. Inspect immediately before changing a mapping. Identify one exact rule or complete new rule and preserve a verified recovery path.
+2. Execute the exact mutation with `--yes`. No bulk, wildcard, implicit replacement or speculative live write tests.
+3. The CLI reads back the target and unrelated mappings before reporting verified success. A failed/uncertain submission must not be replayed automatically. Run `port list` to resolve actual state first; do not invent rollback commands.
+4. Report the intended change and verified result without exposing unrelated data.
 
-For reboot, confirm the expected outage and recovery path first, then use `ctgw reboot --yes`. Re-check reachability after the device has had sufficient time to return.
+For an authorized reboot, establish the expected outage and recovery path, then run `reboot --yes`. A request receipt does not prove recovery: re-read gateway status and verify Internet reachability separately.
 
-## Refuse unsafe shortcuts
+## Limits
 
-- Do not invent bulk delete, bulk disable, bulk enable, wildcard, or implicit replacement commands.
-- Do not test write behavior against a live gateway merely to discover its semantics.
-- Do not expose credentials through `echo`, process arguments, shell traces, tool output, or generated scripts.
-- Do not read passwords back from the OS keyring or copy the user profile into reports. Let `ctgw` resolve the saved credential internally.
-- Do not claim a model is supported without project documentation and verified fixtures.
+- Python migration tests use a synthetic gateway and injected credential stores; native keyrings and real device writes are not established by passing CI.
+- Every write requires `--yes`; keep credentials out of arguments, shell traces, generated files, raw tool output and public logs.
+- Never extract a saved secret manually or copy profiles into reports.
+- Only the stated model/firmware is supported. Similar endpoint names are not evidence of compatibility.
