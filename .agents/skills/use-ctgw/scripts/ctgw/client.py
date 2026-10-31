@@ -121,7 +121,7 @@ class GatewayClient:
             if parsed.port is not None and not 1 <= parsed.port <= 65535:
                 raise ValueError()
             host = parsed.hostname
-            if ":" in host:
+            if ":" in host or parsed.netloc.startswith("["):
                 ipaddress.IPv6Address(host)
                 host = "[" + host + "]"
             else:
